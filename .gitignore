@@ -1,0 +1,11 @@
+.venv-stable/
+logs/
+RAG_Medical_Cahtbot.egg-info/
+.env
+.idea/
+data/
+.venv
+venv
+__pycache__/
+vectorstore/db_faiss/
+*.pdf

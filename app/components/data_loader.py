@@ -1,0 +1,27 @@
+import os
+from app.components.pdf_loader import load_pdf_files,create_text_chunks
+from app.components.vetor_store import save_vector_store
+from app.config.config import DB_FAISS_PATH
+
+from app.common.logger import get_logger
+from app.common.custom_exception import CustomException
+
+logger = get_logger(__name__)
+
+def process_and_store_pdfs():
+    try:
+        logger.info("Starting PDF processing...")
+        documents= load_pdf_files()
+        # create_text_chunks(documents)
+        text_chunks = create_text_chunks(documents)
+        save_vector_store(text_chunks)
+        logger.info("PDF processing and vector store creation completed successfully.")
+    except Exception as e:
+        error_message = CustomException("Faialedd to create vectorstore",e)
+        logger.error(str(error_message))
+
+if __name__=="__main__":
+    # 添加 print 语句来确认脚本是否被执行
+    print("Script is running directly...")
+    process_and_store_pdfs()
+    print("Script finished.")
