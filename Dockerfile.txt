@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 EXPOSE 5000
 
 ## Run the Flask app
-CMD ["python", "app/application.py"]
+## Run the Flask app using module path
+CMD ["python", "-m", "app.application"]
 
 
