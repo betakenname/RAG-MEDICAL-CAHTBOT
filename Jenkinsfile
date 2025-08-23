@@ -6,6 +6,8 @@ pipeline {
         ECR_REPO = 'my-repo'
         IMAGE_TAG = 'latest'
         SERVICE_NAME = 'llmops-medical-service'
+        // 添加下载链接环境变量
+        DOWNLOAD_URL = 'http://host.docker.internal:8000/rag_data.zip'
     }
 
     stages {
@@ -13,7 +15,18 @@ pipeline {
             steps {
                 script {
                     echo 'Cloning GitHub repo to Jenkins...'
-checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
+                    checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
+                }
+            }
+        }
+        
+        // 新增一个阶段，来下载预处理好的数据文件
+        stage('Download RAG Data') {
+            steps {
+                script {
+                    echo 'Downloading pre-generated vector database from local server...'
+                    sh "curl -o rag_data.zip '${env.DOWNLOAD_URL}'"
+                    sh "unzip -o rag_data.zip -d ."
                 }
             }
         }
@@ -40,25 +53,8 @@ checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs:
             }
         }
 
-        //  stage('Deploy to AWS App Runner') {
-        //     steps {
-        //         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
-        //             script {
-        //                 def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-        //                 def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-        //                 def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
-
-        //                 echo "Triggering deployment to AWS App Runner..."
-
-        //                 sh """
-        //                 SERVICE_ARN=\$(aws apprunner list-services --query "ServiceSummaryList[?ServiceName=='${SERVICE_NAME}'].ServiceArn" --output text --region ${AWS_REGION})
-        //                 echo "Found App Runner Service ARN: \$SERVICE_ARN"
-
-        //                 aws apprunner start-deployment --service-arn \$SERVICE_ARN --region ${AWS_REGION}
-        //                 """
-        //             }
-        //         }
-        //     }
+        //  stage('Deploy to AWS App Runner') {
+        //     ...
         // }
     }
 }
