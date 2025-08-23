@@ -13,7 +13,10 @@ pipeline {
             steps {
                 script {
                     echo 'Cloning GitHub repo to Jenkins...'
-checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
+                    // 清理工作区，确保每次都是全新的开始
+                    cleanWs() 
+                    // 检出代码
+                    checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
                 }
             }
         }
@@ -23,26 +26,44 @@ checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs:
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
                     script {
                         def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${env.ECR_REPO}"
-                        def imageFullTag = "${ecrUrl}:${IMAGE_TAG}"
-                        sh 'echo "Checking current directory and files..."'
+                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+                        def imageFullName = "${ecrUrl}/${env.ECR_REPO}:${env.IMAGE_TAG}"
 
-                        sh """
+                        // ======================= 关键调试步骤 =======================
+                        // 在执行 docker build 之前，打印当前路径和文件列表
+                        // 这能帮助我们确认 Dockerfile 是否在正确的位置
+                        sh 'echo "--- DEBUGGING START ---"'
+                        sh 'echo ">> Current directory is:"'
+                        sh 'pwd'
+                        sh 'echo ">> Files in this directory are:"'
+                        sh 'ls -al'
+                        sh 'echo "--- DEBUGGING END ---"'
+                        // ==========================================================
+
+                        echo "Logging into Amazon ECR..."
+                        sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}"
+
+                        echo "Building Docker image: ${env.ECR_REPO}:${env.IMAGE_TAG}"
+                        sh "docker build -t ${env.ECR_REPO}:${env.IMAGE_TAG} ."
+
+                        echo "Scanning image with Trivy..."
+                        // 使用 || true 确保即使Trivy扫描发现漏洞，流水线也不会失败，而是继续执行
+                        sh "trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${env.ECR_REPO}:${env.IMAGE_TAG} || true"
                         
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}
-                        docker build -t ${env.ECR_REPO}:${IMAGE_TAG} .
-                        trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${env.ECR_REPO}:${IMAGE_TAG} || true
-                        docker tag ${env.ECR_REPO}:${IMAGE_TAG} ${imageFullTag}
-                        docker push ${imageFullTag}
-                        """
+                        echo "Tagging Docker image for ECR push..."
+                        sh "docker tag ${env.ECR_REPO}:${env.IMAGE_TAG} ${imageFullName}"
+                        
+                        echo "Pushing Docker image to ECR: ${imageFullName}"
+                        sh "docker push ${imageFullName}"
 
+                        // 归档Trivy扫描报告
                         archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
                     }
                 }
             }
         }
 
-        //  stage('Deploy to AWS App Runner') {
+        // stage('Deploy to AWS App Runner') {
         //     steps {
         //         withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
         //             script {
