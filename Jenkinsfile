@@ -21,6 +21,22 @@ pipeline {
             }
         }
 
+        // ======================= 新增的关键阶段 =======================
+        stage('Download RAG Data') {
+            steps {
+                script {
+                    echo "Downloading vector database from AWS S3..."
+                    // 从您配置的 S3 公开链接下载数据文件
+                    sh 'curl -o rag_data.zip "https://rag-medical-data-lzr-2025.s3.ap-southeast-2.amazonaws.com/rag_data.zip"'
+                    
+                    echo "Unzipping data..."
+                    // 解压数据文件到当前工作目录，供 Docker 构建时使用
+                    sh 'unzip -o rag_data.zip -d .'
+                }
+            }
+        }
+        // ==========================================================
+
         stage('Build, Scan, and Push Docker Image to ECR') {
             steps {
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
@@ -29,17 +45,6 @@ pipeline {
                         def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
                         def imageFullName = "${ecrUrl}/${env.ECR_REPO}:${env.IMAGE_TAG}"
 
-                        // ======================= 关键调试步骤 =======================
-                        // 在执行 docker build 之前，打印当前路径和文件列表
-                        // 这能帮助我们确认 Dockerfile 是否在正确的位置
-                        sh 'echo "--- DEBUGGING START ---"'
-                        sh 'echo ">> Current directory is:"'
-                        sh 'pwd'
-                        sh 'echo ">> Files in this directory are:"'
-                        sh 'ls -al'
-                        sh 'echo "--- DEBUGGING END ---"'
-                        // ==========================================================
-
                         echo "Logging into Amazon ECR..."
                         sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}"
 
@@ -47,7 +52,6 @@ pipeline {
                         sh "docker build -t ${env.ECR_REPO}:${env.IMAGE_TAG} ."
 
                         echo "Scanning image with Trivy..."
-                        // 使用 || true 确保即使Trivy扫描发现漏洞，流水线也不会失败，而是继续执行
                         sh "trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${env.ECR_REPO}:${env.IMAGE_TAG} || true"
                         
                         echo "Tagging Docker image for ECR push..."
@@ -56,7 +60,6 @@ pipeline {
                         echo "Pushing Docker image to ECR: ${imageFullName}"
                         sh "docker push ${imageFullName}"
 
-                        // 归档Trivy扫描报告
                         archiveArtifacts artifacts: 'trivy-report.json', allowEmptyArchive: true
                     }
                 }

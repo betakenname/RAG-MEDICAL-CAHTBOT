@@ -1,0 +1,17 @@
+# Git
+.git
+.gitignore
+
+# Python virtual environment
+.venv
+.venv-stable
+venv/
+*.pyc
+__pycache__/
+
+# IDE / Editor specific
+.idea/
+.vscode/
+
+# Logs
+logs/
