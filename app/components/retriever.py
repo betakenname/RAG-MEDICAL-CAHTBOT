@@ -5,11 +5,11 @@
 # 从 langchain_core.prompts 库中，导入 PromptTemplate 这个“指令模板”工具
 # 导入我们自己写的“LLM加载器” (load_llm) 和“向量数据库加载器” (load_vector_store)
 # 导入日志、自定义错误和配置文件等
-from langchain.chains import RetrievalQA
+from langchain.chains import RetrievalQA,ConversationalRetrievalChain
+
 from langchain_core.prompts import PromptTemplate
 from app.components.llm import load_llm
 from app.components.vetor_store import load_vector_store
-
 from app.common.logger import get_logger
 from app.common.custom_exception import CustomException
 from app.config.config import HUGGINGFACE_REPO_ID,HF_TOKEN
@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 # 规定好AI的角色和限制，比如“只能用下面给的资料回答”。
 # 使用两到三句回答，模板简洁有效
 # 指令模板留下两个占位符：{context} 用来放从数据库里查到的资料，{question} 用来放用户的问题。
-CUSTOM_PROMPT_TEMPLATE = """ 请仅使用上下文中提供的信息，用最多3-4行来回答以下医学问题。
+CUSTOM_PROMPT_TEMPLATE = """ 请仅使用上下文中提供的信息，用6行以内来回答以下医学问题，不要跟提问者说你用到了上下文，表现专业而精炼易懂。
 
 上下文：
 {context}
@@ -71,21 +71,18 @@ def create_qa_chain():
 
         # === 步骤10：开始组装“问答流水线” (RetrievalQA) ===
         # 调用 RetrievalQA.from_chain_type() 方法来创建问答链
-        qa_chain = RetrievalQA.from_chain_type(
-            # 参数1 (llm): 把我们的“答题专家”(llm)装配进去
+        # qa_chain = RetrievalQA.from_chain_type(
+        qa_chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
-            # 参数2 (chain_type): 设置为 "stuff"，表示把找到的资料都“塞”给专家看
-            chain_type="stuff",
-            # 参数3 (retriever): 设置“图书检索员”。
-            # 我们用 db.as_retriever() 把数据库变成一个检索员，
-            # 并用 search_kwargs={'k': 1} 指示它每次只找最相关的1份资料。
-            retriever=db.as_retriever(search_kwargs={'k': 3}),
-            # 参数4 (return_source_documents): 设置为 False，表示我们最终只需要答案，不需要附带原始资料
-            return_source_documents=False,
-            # 参数5 (chain_type_kwargs): 传入我们自定义的“考试指令”。
-            # 告诉流水线，提问时要用我们 set_custom_prompt() 函数创建的那个模板。
-            chain_type_kwargs={'prompt': set_custom_prompt()},
-            verbose=True
+            retriever=db.as_retriever(
+                search_type="similarity_score_threshold",
+                search_kwargs={'score_threshold': 0.5, 'k': 3}
+            ),
+            # 关键：使用 combine_docs_chain_kwargs 来传递自定义 Prompt
+            combine_docs_chain_kwargs={'prompt': set_custom_prompt()},
+            # 确保返回参考资料，方便我们调试
+            return_source_documents=True
+            # 注意：chain_type, chain_type_kwargs, verbose 参数在这里不再需要
         )
 
         # === 步骤11：打印成功日志 ===
