@@ -1,4 +1,5 @@
 .venv-stable/
+.venv-prod/
 logs/
 RAG_Medical_Cahtbot.egg-info/
 .env
