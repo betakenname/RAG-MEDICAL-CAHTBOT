@@ -9,17 +9,17 @@ pipeline {
     }
 
     stages {
-        stage('Clone GitHub Repo') {
-            steps {
-                script {
-                    echo 'Cloning GitHub repo to Jenkins...'
-                    // 清理工作区，确保每次都是全新的开始
-                    cleanWs() 
-                    // 检出代码
-                    checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
-                }
-            }
-        }
+        // stage('Clone GitHub Repo') {
+        //     steps {
+        //         script {
+        //             echo 'Cloning GitHub repo to Jenkins...'
+        //             // 清理工作区，确保每次都是全新的开始
+        //             cleanWs() 
+        //             // 检出代码
+        //             checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
+        //         }
+        //     }
+        // }
 
         // ======================= 新增的关键阶段 =======================
         stage('Download RAG Data') {
