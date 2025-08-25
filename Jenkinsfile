@@ -26,12 +26,16 @@ pipeline {
             steps {
                 script {
                     echo "Downloading vector database from AWS S3..."
-                    // 从您配置的 S3 公开链接下载数据文件
                     sh 'curl -o rag_data.zip "https://rag-medical-data-lzr-2025.s3.ap-southeast-2.amazonaws.com/rag_data.zip"'
                     
                     echo "Unzipping data..."
-                    // 解压数据文件到当前工作目录，供 Docker 构建时使用
                     sh 'unzip -o rag_data.zip -d .'
+
+                    echo "Creating 'vectorstore' directory and moving 'db_faiss' into it..."
+                    // 1. 创建父目录 vectorstore (-p 确保如果目录已存在也不会报错)
+                    sh 'mkdir -p vectorstore'
+                    // 2. 将解压出的 db_faiss 目录，移动到 vectorstore 目录的内部
+                    sh 'mv db_faiss vectorstore/'
                 }
             }
         }
