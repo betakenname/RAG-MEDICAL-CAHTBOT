@@ -9,17 +9,17 @@ pipeline {
     }
 
     stages {
-        // stage('Clone GitHub Repo') {
-        //     steps {
-        //         script {
-        //             echo 'Cloning GitHub repo to Jenkins...'
-        //             // 清理工作区，确保每次都是全新的开始
-        //             cleanWs() 
-        //             // 检出代码
-        //             checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
-        //         }
-        //     }
-        // }
+        stage('Clone GitHub Repo') {
+            steps {
+                script {
+                    echo 'Cloning GitHub repo to Jenkins...'
+                    // 清理工作区，确保每次都是全新的开始
+                    cleanWs() 
+                    // 检出代码
+                    checkout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-token', url: 'https://github.com/betakenname/RAG-MEDICAL-CAHTBOT.git']])
+                }
+            }
+        }
 
         // ======================= 新增的关键阶段 =======================
         stage('Download RAG Data') {
@@ -30,7 +30,8 @@ pipeline {
                     
                     echo "Unzipping data..."
                     sh 'unzip -o rag_data.zip -d .'
-
+                    echo "Recreating 'vectorstore' directory to ensure it is clean..."      
+                    sh 'rm -rf vectorstore'
                     echo "Creating 'vectorstore' directory and moving 'db_faiss' into it..."
                     // 1. 创建父目录 vectorstore (-p 确保如果目录已存在也不会报错)
                     sh 'mkdir -p vectorstore'
