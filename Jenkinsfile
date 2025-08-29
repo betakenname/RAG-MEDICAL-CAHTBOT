@@ -9,13 +9,15 @@ pipeline {
     }
 
     stages {
-        // 【新增阶段】初始化并拉取 Git 子模块
-        stage('Initialize Submodules') {
+        // 【关键修改】删除子模块阶段，替换为直接下载
+        stage('Download Embedding Model') {
             steps {
                 script {
-                    echo "Initializing and updating Git submodules..."
-                    // 这条命令会找到项目中的所有子模块并拉取它们的真实文件
-                    sh 'git submodule update --init --recursive'
+                    echo "Cloning the embedding model from ModelScope..."
+                    // 先删除旧目录，确保每次都是新的
+                    sh 'rm -rf Qwen3-Embedding-0.6B'
+                    // 直接、简单地克隆模型仓库
+                    sh 'git clone https://www.modelscope.cn/Qwen/Qwen3-Embedding-0.6B.git'
                 }
             }
         }
@@ -27,7 +29,7 @@ pipeline {
                     sh 'curl -o rag_data.zip "https://rag-medical-data-lzr-2025.s3.ap-southeast-2.amazonaws.com/rag_data.zip"'
                     
                     echo "Unzipping data and arranging directory..."
-                    sh 'rm -rf vectorstore' // 先删除旧目录，确保干净
+                    sh 'rm -rf vectorstore'
                     sh 'unzip -o rag_data.zip -d .'
                     sh 'mkdir -p vectorstore'
                     sh 'mv db_faiss vectorstore/'
@@ -38,14 +40,8 @@ pipeline {
         stage('Build, Scan, and Push Docker Image to ECR') {
             steps {
                 script {
-                    withCredentials([[
-                        $class: 'AmazonWebServicesCredentialsBinding', 
-                        credentialsId: 'aws-token'
-                    ]]) {
-                        def accountId = sh(
-                            script: "aws sts get-caller-identity --query Account --output text", 
-                            returnStdout: true
-                        ).trim()
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
                         def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
                         def imageFullName = "${ecrUrl}/${env.ECR_REPO}:${env.IMAGE_TAG}"
 
