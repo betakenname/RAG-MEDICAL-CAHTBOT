@@ -20,7 +20,7 @@ pipeline {
             }
         }
 
-        stage('Download RAG Data') {
+        stage('Download RAG Data and Qwen3 embedding Model') {
             steps {
                 script {
                     echo "Downloading vector database from AWS S3..."
