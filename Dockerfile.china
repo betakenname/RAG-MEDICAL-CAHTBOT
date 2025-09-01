@@ -1,25 +1,28 @@
 FROM python:3.10-slim
 
-RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || \
-    echo "deb https://mirrors.aliyun.com/debian/ bullseye main" > /etc/apt/sources.list
-
+# 设置工作目录
 WORKDIR /app
 
+# 安装系统依赖
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends curl git && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# 复制requirements文件
 COPY requirements.core.txt .
 
-# 多源策略安装
-RUN pip install --no-cache-dir -r requirements.core.txt \
-    -i https://pypi.tuna.tsinghua.edu.cn/simple/ \
-    --extra-index-url https://pypi.org/simple/ \
-    --extra-index-url https://pypi.douban.com/simple/ \
-    --timeout 300 --retries 2 || \
-    pip install --no-cache-dir -r requirements.core.txt \
-    -i https://pypi.org/simple/ --timeout 600
+# 升级pip并安装Python依赖（使用国内镜像源）
+RUN pip install --upgrade pip && \
+    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
+    pip config set install.trusted-host pypi.tuna.tsinghua.edu.cn && \
+    pip install --no-cache-dir --default-timeout=1000 -r requirements.core.txt
 
+# 复制所有应用文件
 COPY . .
+
+# 暴露端口
 EXPOSE 5000
-CMD ["python", "-m", "app.application"]
+
+# 设置环境变量
+ENV FLASK_APP=app.py
+ENV PYTHONUNBUFFERED=1
