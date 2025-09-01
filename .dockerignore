@@ -1,17 +1,25 @@
-# Git
+# Git and virtual environments
 .git
 .gitignore
-
-# Python virtual environment
-.venv
-.venv-stable
+.venv-prod/
+.venv-stable/
 venv/
-*.pyc
-__pycache__/
 
-# IDE / Editor specific
+# Docker and Jenkins specific
+custom_jenkins/
+Dockerfile.china
+Dockerfile.original
+*.original
+
+# Python cache
+__pycache__/
+*.pyc
+
+# IDE and OS files
 .idea/
 .vscode/
+*.DS_Store
 
-# Logs
+# Logs and local data
 logs/
+*.log

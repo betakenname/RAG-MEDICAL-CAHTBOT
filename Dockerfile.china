@@ -1,28 +1,39 @@
+# --- Final Optimized Dockerfile for CPU-based RAG ---
 FROM python:3.10-slim
 
-# 设置工作目录
+# 设置环境变量，避免时区等交互式提问，并使用国内镜像
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple/
+
 WORKDIR /app
 
-# 安装系统依赖
-RUN apt-get update --fix-missing && \
+# 1. 安装系统依赖 (从阿里云镜像)
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || echo "Using default sources" && \
+    apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends curl git && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 复制requirements文件
+# 2. 复制依赖文件
 COPY requirements.core.txt .
 
-# 升级pip并安装Python依赖（使用国内镜像源）
-RUN pip install --upgrade pip && \
-    pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple && \
-    pip config set install.trusted-host pypi.tuna.tsinghua.edu.cn && \
-    pip install --no-cache-dir --default-timeout=1000 -r requirements.core.txt
+# 3. 安装Python依赖 (最关键的优化)
+#    --extra-index-url 添加PyTorch官方CPU源，专门用于下载 torch+cpu
+#    --timeout 和 --retries 增加网络容错性
+RUN pip install --no-cache-dir \
+    -r requirements.core.txt \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    --timeout 600 \
+    --retries 3
 
-# 复制所有应用文件
+# 4. 复制所有应用代码和资源
+#    注意：模型和数据由 Jenkinsfile 在构建前复制进来
 COPY . .
 
-# 暴露端口
+# 5. 暴露端口
 EXPOSE 5000
 
-# 设置环境变量
-ENV FLASK_APP=app.py
-ENV PYTHONUNBUFFERED=1
+# 6. 健康检查和启动命令
+HEALTHCHECK --interval=45s --timeout=15s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+CMD ["python", "-m", "app.application"]
