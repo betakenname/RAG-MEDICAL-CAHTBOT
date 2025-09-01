@@ -1,0 +1,36 @@
+# 使用预构建的基础镜像（包含模型）
+ARG BASE_IMAGE=medical-chatbot-base:latest
+FROM ${BASE_IMAGE}
+
+WORKDIR /app
+
+# 切换到root用户安装依赖
+USER root
+
+# 只安装应用层依赖（变化频繁的部分）
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple/ --timeout 300
+
+# 复制应用代码
+COPY app/ ./app/
+COPY .env ./
+# 注意：不复制Qwen3-Embedding-0.6B，因为基础镜像已包含
+
+# 下载向量数据库
+RUN curl -o rag_data.zip https://rag-medical-data-lzr-2025.s3.ap-southeast-2.amazonaws.com/rag_data.zip && \
+    unzip -o rag_data.zip -d . && \
+    mkdir -p vectorstore && \
+    mv db_faiss vectorstore/ && \
+    rm rag_data.zip
+
+# 切换回应用用户
+RUN chown -R appuser:appuser /app
+USER appuser
+
+# 添加健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+EXPOSE 5000
+
+CMD ["python", "-m", "app.application"]

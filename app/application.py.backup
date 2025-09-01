@@ -1,11 +1,11 @@
 # app.py (或者 application.py)
-from dotenv import load_dotenv
-from datetime import datetime
+
 import os
 import re  # <-- 【修改1】确保导入 re 模块
 from flask import Flask, render_template, request, session, redirect, url_for
 from markupsafe import Markup
 from flask_cors import CORS
+from dotenv import load_dotenv
 
 # 从 langchain_core.messages 导入 HumanMessage 和 AIMessage
 from langchain_core.messages import HumanMessage, AIMessage
@@ -94,30 +94,6 @@ def clear():
     session.pop("messages", None)
     return redirect(url_for("index"))
 
-
-@app.route("/health")
-def health_check():
-    """健康检查端点"""
-    import os
-    try:
-        # 检查关键组件
-        model_exists = os.path.exists('Qwen3-Embedding-0.6B')
-        vectorstore_exists = os.path.exists('vectorstore/db_faiss')
-        qa_chain_ready = qa_chain is not None
-        
-        status = {
-            'status': 'healthy' if all([model_exists, vectorstore_exists, qa_chain_ready]) else 'unhealthy',
-            'model_loaded': model_exists,
-            'vectorstore_loaded': vectorstore_exists,
-            'qa_chain_ready': qa_chain_ready,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-        return status, 200 if status['status'] == 'healthy' else 503
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {'status': 'error', 'error': str(e)}, 503
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
