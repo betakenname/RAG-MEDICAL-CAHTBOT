@@ -137,39 +137,39 @@ EOF
         
          stage('🧪 基本测试') {
             steps {
-                script {
-                    def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                    def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
-                    def imageToTest = "${ecrUrl}/${env.ECR_REPO}:${env.IMAGE_TAG}"
-                    
-                    echo "对镜像 ${imageToTest} 运行基本健康检查..."
-                    sh '''
-                        # 使用随机端口避免冲突
-                        TEST_PORT=$(shuf -i 8080-8999 -n 1)
-                        echo "使用测试端口: $TEST_PORT"
+                // ⭐⭐⭐ 最终修正在这里 ⭐⭐⭐
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
+                    script {
+                        def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                        def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+                        def imageToTest = "${ecrUrl}/${env.ECR_REPO}:${env.IMAGE_TAG}"
                         
-                        CONTAINER_ID=$(docker run --rm -d --name test-medical-${BUILD_NUMBER} -p $TEST_PORT:5000 ''' + imageToTest + ''')
-                        
-                        # 增加等待时间确保模型加载
-                        echo "等待120秒让应用完全启动..."
-                        sleep 120 
-                        
-                        # 循环检查健康状态
-                        for i in {1..5}; do
-                            if curl -f -s -o /dev/null http://localhost:$TEST_PORT/health; then
-                                echo "✅ 健康检查通过！"
-                                docker stop $CONTAINER_ID || true
-                                exit 0
-                            fi
-                            echo "等待服务启动... (尝试 $i/5)"
-                            sleep 15
-                        done
-                        
-                        echo "❌ 健康检查失败"
-                        docker logs $CONTAINER_ID
-                        docker stop $CONTAINER_ID
-                        exit 1
-                    '''
+                        echo "对镜像 ${imageToTest} 运行基本健康检查..."
+                        sh '''
+                            TEST_PORT=$(shuf -i 8080-8999 -n 1)
+                            echo "使用测试端口: $TEST_PORT"
+                            
+                            CONTAINER_ID=$(docker run --rm -d --name test-medical-${BUILD_NUMBER} -p $TEST_PORT:5000 ''' + imageToTest + ''')
+                            
+                            echo "等待120秒让应用完全启动..."
+                            sleep 120 
+                            
+                            for i in {1..5}; do
+                                if curl -f -s -o /dev/null http://localhost:$TEST_PORT/health; then
+                                    echo "✅ 健康检查通过！"
+                                    docker stop $CONTAINER_ID
+                                    exit 0
+                                fi
+                                echo "等待服务启动... (尝试 $i/5)"
+                                sleep 15
+                            done
+                            
+                            echo "❌ 健康检查失败"
+                            docker logs $CONTAINER_ID
+                            docker stop $CONTAINER_ID
+                            exit 1
+                        '''
+                    }
                 }
             }
         }
