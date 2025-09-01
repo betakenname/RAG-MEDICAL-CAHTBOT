@@ -1,49 +1,52 @@
+// Jenkinsfile - 毕业最终版
 pipeline {
-    agent any // 在任何可用的 agent 上运行
+    agent any
 
     environment {
         AWS_REGION = 'ap-southeast-2'
-        ECR_REPO = 'my-repo' // 你的ECR仓库名
-        IMAGE_TAG = "${BUILD_NUMBER}" // 使用构建号作为标签
+        ECR_REPO = 'my-repo'
+        IMAGE_TAG = "${BUILD_NUMBER}"
         LATEST_TAG = 'latest'
-        JENKINS_CACHE = '/tmp/jenkins-cache' // Jenkins服务器上的缓存目录
+        JENKINS_CACHE = '/tmp/jenkins-cache'
     }
 
     stages {
         stage('📋 环境准备') {
             steps {
                 script {
-                    echo "准备构建环境..."
                     sh "mkdir -p ${env.JENKINS_CACHE}"
-                    
-                    def modelCached = sh(script: "test -d ${env.JENKINS_CACHE}/Qwen3-Embedding-0.6B", returnStatus: true) == 0
+                    // 修正的缓存检查逻辑：检查核心模型文件是否存在
+                    def modelCached = sh(script: "test -f ${env.JENKINS_CACHE}/Qwen3-Embedding-0.6B/model.safetensors", returnStatus: true) == 0
                     def ragDataCached = sh(script: "test -f ${env.JENKINS_CACHE}/rag_data.zip", returnStatus: true) == 0
                     
                     env.MODEL_CACHED = modelCached.toString()
                     env.RAG_CACHED = ragDataCached.toString()
                     
-                    echo "模型缓存状态: ${env.MODEL_CACHED}"
+                    echo "模型文件缓存状态: ${env.MODEL_CACHED}"
                     echo "RAG数据缓存状态: ${env.RAG_CACHED}"
                 }
             }
         }
 
         stage('🤖 下载嵌入模型 (仅在缓存不存在时)') {
-            when {
-                environment name: 'MODEL_CACHED', value: 'false'
-            }
+            when { expression { env.MODEL_CACHED == 'false' } }
             steps {
                 script {
-                    echo "从 ModelScope 下载嵌入模型到缓存..."
-                    sh "cd ${env.JENKINS_CACHE} && rm -rf Qwen3-Embedding-0.6B && git clone --depth=1 https://www.modelscope.cn/Qwen/Qwen3-Embedding-0.6B.git"
+                    echo "缓存不存在或不完整，正在从ModelScope下载完整模型..."
+                    // 先clone，然后进入目录，再用 git lfs pull 下载大文件
+                    sh """
+                        cd ${env.JENKINS_CACHE}
+                        rm -rf Qwen3-Embedding-0.6B
+                        git clone https://www.modelscope.cn/Qwen/Qwen3-Embedding-0.6B.git
+                        cd Qwen3-Embedding-0.6B
+                        git lfs pull
+                    """
                 }
             }
         }
 
         stage('📦 下载RAG数据 (仅在缓存不存在时)') {
-            when {
-                environment name: 'RAG_CACHED', value: 'false'
-            }
+            when { expression { env.RAG_CACHED == 'false' } }
             steps {
                 script {
                     echo "从 AWS S3 下载向量数据库到缓存..."
@@ -73,13 +76,11 @@ pipeline {
         stage('🏗️ 构建、扫描并推送Docker镜像') {
             steps {
                 script {
-                    // 从Jenkins凭据中读取Secret text，并创建.env文件
                     withCredentials([string(credentialsId: 'dotenv-file', variable: 'DOTENV_CONTENT')]) {
                         echo "从Jenkins凭据创建 .env 文件..."
                         sh 'echo "${DOTENV_CONTENT}" > .env'
                     }
 
-                    // 使用AWS凭证进行登录和推送
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
                         def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
                         def ecrUrl = "${accountId}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
@@ -89,33 +90,19 @@ pipeline {
                         echo "登录到 Amazon ECR..."
                         sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}"
                         
-                        // 动态创建Dockerfile.jenkins，并包含关键修正
                         sh '''
                             cat > Dockerfile.jenkins << 'EOF'
 FROM python:3.10-slim
-
-# 设置国内镜像源，增加网络稳定性
 ENV DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || true
-
 WORKDIR /app
-
-# 安装必要的系统工具
 RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
-
-# 复制依赖文件
 COPY requirements.core.txt .
-
-# 安装Python依赖 (关键修正：添加PyTorch官方CPU源)
 RUN pip install --no-cache-dir -r requirements.core.txt --timeout=600 --retries=3 \
     -i https://pypi.tuna.tsinghua.edu.cn/simple/ \
     --extra-index-url https://download.pytorch.org/whl/cpu
-
-# 复制所有应用代码和构建好的资源
 COPY . .
-
 EXPOSE 5000
-
 CMD ["python", "-m", "app.application"]
 EOF
                         '''
@@ -137,7 +124,6 @@ EOF
         
          stage('🧪 基本测试') {
             steps {
-                // ⭐⭐⭐ 最终修正在这里 ⭐⭐⭐
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
                     script {
                         def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
