@@ -16,7 +16,6 @@ pipeline {
                     echo "准备构建环境..."
                     sh "mkdir -p ${env.JENKINS_CACHE}"
                     
-                    // 检查缓存状态
                     def modelCached = sh(script: "test -d ${env.JENKINS_CACHE}/Qwen3-Embedding-0.6B", returnStatus: true) == 0
                     def ragDataCached = sh(script: "test -f ${env.JENKINS_CACHE}/rag_data.zip", returnStatus: true) == 0
                     
@@ -78,7 +77,6 @@ pipeline {
                     withCredentials([string(credentialsId: 'dotenv-file', variable: 'DOTENV_CONTENT')]) {
                         echo "从Jenkins凭据创建 .env 文件..."
                         sh 'echo "${DOTENV_CONTENT}" > .env'
-                        echo ".env 文件创建成功。"
                     }
 
                     // 使用AWS凭证进行登录和推送
@@ -90,18 +88,46 @@ pipeline {
 
                         echo "登录到 Amazon ECR..."
                         sh "aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${ecrUrl}"
+                        
+                        // 动态创建Dockerfile.jenkins，并包含关键修正
+                        sh '''
+                            cat > Dockerfile.jenkins << 'EOF'
+FROM python:3.10-slim
 
-                        echo "使用项目根目录的 Dockerfile 构建镜像..."
-                        // 直接使用我们已经优化并验证过的项目根目录下的 Dockerfile
-                        sh "docker build -t ${imageFullName} ."
+# 设置国内镜像源，增加网络稳定性
+ENV DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources || true
+
+WORKDIR /app
+
+# 安装必要的系统工具
+RUN apt-get update && apt-get install -y curl git && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖文件
+COPY requirements.core.txt .
+
+# 安装Python依赖 (关键修正：添加PyTorch官方CPU源)
+RUN pip install --no-cache-dir -r requirements.core.txt --timeout=600 --retries=3 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple/ \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# 复制所有应用代码和构建好的资源
+COPY . .
+
+EXPOSE 5000
+
+CMD ["python", "-m", "app.application"]
+EOF
+                        '''
+
+                        echo "构建 Docker 镜像..."
+                        sh "docker build -f Dockerfile.jenkins -t ${imageFullName} ."
                         
                         echo "执行安全扫描..."
-                        sh "trivy image --severity HIGH,CRITICAL --format json -o trivy-report.json ${imageFullName} || echo '安全扫描完成（可能有警告或失败）'"
+                        sh "trivy image --severity HIGH,CRITICAL ${imageFullName} || echo '安全扫描完成（可能有警告）'"
                         
-                        echo "为镜像打上 latest 标签..."
+                        echo "标记和推送镜像..."
                         sh "docker tag ${imageFullName} ${latestFullName}"
-                        
-                        echo "推送 Docker 镜像到 ECR..."
                         sh "docker push ${imageFullName}"
                         sh "docker push ${latestFullName}"
                     }
@@ -130,7 +156,6 @@ pipeline {
                         
                         # 循环检查健康状态
                         for i in {1..5}; do
-                            # 使用 -s -o /dev/null 来静默输出，只关心返回码
                             if curl -f -s -o /dev/null http://localhost:$TEST_PORT/health; then
                                 echo "✅ 健康检查通过！"
                                 docker stop $CONTAINER_ID || true
@@ -154,9 +179,7 @@ pipeline {
         always {
             script {
                 echo "清理工作区..."
-                // cleanWs() 会删除所有文件，包括缓存的模型和数据
-                // 我们手动清理，保留缓存以备下次使用
-                sh "rm -rf Qwen3-Embedding-0.6B vectorstore rag_data.zip .env Dockerfile.jenkins trivy-report.json || true"
+                cleanWs()
             }
         }
         success {
