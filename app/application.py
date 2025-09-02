@@ -99,10 +99,15 @@ def clear():
 def health_check():
     """健康检查端点"""
     import os
+    # 定义在容器内的绝对路径
+    APP_ROOT = '/app'
+    MODEL_PATH = os.path.join(APP_ROOT, 'Qwen3-Embedding-0.6B')
+    VECTORSTORE_PATH = os.path.join(APP_ROOT, 'vectorstore', 'db_faiss')
+
     try:
-        # 检查关键组件
-        model_exists = os.path.exists('Qwen3-Embedding-0.6B')
-        vectorstore_exists = os.path.exists('vectorstore/db_faiss')
+        # 使用绝对路径进行检查，确保万无一失
+        model_exists = os.path.exists(MODEL_PATH)
+        vectorstore_exists = os.path.exists(VECTORSTORE_PATH)
         qa_chain_ready = qa_chain is not None
         
         status = {
