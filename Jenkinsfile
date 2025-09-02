@@ -116,6 +116,9 @@ RUN pip install --no-cache-dir -r requirements.core.txt --timeout=600 --retries=
 # 复制所有应用代码和构建好的资源
 COPY . .
 
+# 【关键修复】设置生产环境变量，禁用Flask debug模式
+ENV FLASK_DEBUG=False
+
 EXPOSE 5000
 
 CMD ["python", "-m", "app.application"]
@@ -139,7 +142,7 @@ EOF
         
          stage('🧪 基本测试') {
             steps {
-                // ⭐⭐⭐ 最终修正在这里 ⭐⭐⭐
+                // 【关键修复】改进健康检查逻辑
                 withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-token']]) {
                     script {
                         def accountId = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
@@ -148,31 +151,64 @@ EOF
                         
                         echo "对镜像 ${imageToTest} 运行基本健康检查..."
                         sh '''
+                            set -e
                             TEST_PORT=$(shuf -i 8080-8999 -n 1)
                             echo "使用测试端口: $TEST_PORT"
-                            # 【临时调试代码】 打印 .env 文件内容
-                            echo "--- Debugging: Content of .env file ---"
-                            cat .env
-                            echo "----------------------------------------"
-                            # 使用 --env-file 将工作区的 .env 文件注入到容器中
-                            CONTAINER_ID=$(docker run --rm -d --name test-medical-${BUILD_NUMBER} --env-file .env -p $TEST_PORT:5000 ''' + imageToTest + ''')                            
-                            echo "等待120秒让应用完全启动..."
-                            sleep 120 
                             
-                            for i in {1..5}; do
-                                if curl -f -s -o /dev/null http://localhost:$TEST_PORT/health; then
-                                    echo "✅ 健康检查通过！"
-                                    docker stop $CONTAINER_ID
-                                    exit 0
+                            # 启动容器，禁用debug模式
+                            CONTAINER_ID=$(docker run --rm -d --name test-medical-${BUILD_NUMBER} \
+                                --env-file .env \
+                                -e FLASK_DEBUG=False \
+                                -p $TEST_PORT:5000 ''' + imageToTest + ''')
+                            
+                            echo "Container ID: $CONTAINER_ID"
+                            echo "等待应用完全启动..."
+                            
+                            # 等待容器健康检查，最多3分钟
+                            TIMEOUT=180
+                            WAIT_TIME=0
+                            SUCCESS=false
+                            
+                            while [ $WAIT_TIME -lt $TIMEOUT ]; do
+                                echo "健康检查尝试 - 已等待 ${WAIT_TIME}s"
+                                
+                                # 检查容器是否还在运行
+                                if ! docker ps | grep -q $CONTAINER_ID; then
+                                    echo "❌ 容器已停止运行"
+                                    docker logs $CONTAINER_ID
+                                    docker rm -f $CONTAINER_ID 2>/dev/null || true
+                                    exit 1
                                 fi
-                                echo "等待服务启动... (尝试 $i/5)"
+                                
+                                # 尝试健康检查
+                                if curl -f -s -m 10 http://localhost:$TEST_PORT/health; then
+                                    echo "✅ 健康检查通过！"
+                                    SUCCESS=true
+                                    break
+                                else
+                                    echo "健康检查暂未通过，继续等待..."
+                                    # 显示容器日志的最后几行
+                                    echo "=== 容器最新日志 ==="
+                                    docker logs --tail 10 $CONTAINER_ID
+                                    echo "==================="
+                                fi
+                                
                                 sleep 15
+                                WAIT_TIME=$((WAIT_TIME + 15))
                             done
                             
-                            echo "❌ 健康检查失败"
-                            docker logs $CONTAINER_ID
+                            # 清理容器
+                            echo "停止并清理测试容器..."
                             docker stop $CONTAINER_ID
-                            exit 1
+                            docker rm -f $CONTAINER_ID 2>/dev/null || true
+                            
+                            if [ "$SUCCESS" = "true" ]; then
+                                echo "🎉 健康检查成功完成"
+                                exit 0
+                            else
+                                echo "❌ 健康检查超时失败"
+                                exit 1
+                            fi
                         '''
                     }
                 }
@@ -184,6 +220,8 @@ EOF
         always {
             script {
                 echo "清理工作区..."
+                // 清理可能残留的测试容器
+                sh "docker ps -a | grep test-medical-${BUILD_NUMBER} | awk '{print \$1}' | xargs -r docker rm -f || true"
                 cleanWs()
             }
         }

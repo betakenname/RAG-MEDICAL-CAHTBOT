@@ -97,7 +97,7 @@ def clear():
 
 @app.route("/health")
 def health_check():
-    """健康检查端点"""
+    """健康检查端点 - 增强版本"""
     import os
     # 定义在容器内的绝对路径
     APP_ROOT = '/app'
@@ -110,12 +110,19 @@ def health_check():
         vectorstore_exists = os.path.exists(VECTORSTORE_PATH)
         qa_chain_ready = qa_chain is not None
         
+        # 更详细的日志记录
+        logger.info(f"Health check - Model exists: {model_exists}")
+        logger.info(f"Health check - Vectorstore exists: {vectorstore_exists}")  
+        logger.info(f"Health check - QA chain ready: {qa_chain_ready}")
+        
         status = {
             'status': 'healthy' if all([model_exists, vectorstore_exists, qa_chain_ready]) else 'unhealthy',
             'model_loaded': model_exists,
             'vectorstore_loaded': vectorstore_exists,
             'qa_chain_ready': qa_chain_ready,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'model_path': MODEL_PATH,
+            'vectorstore_path': VECTORSTORE_PATH
         }
         
         return status, 200 if status['status'] == 'healthy' else 503
@@ -125,4 +132,7 @@ def health_check():
         return {'status': 'error', 'error': str(e)}, 503
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # 【关键修复】根据环境变量决定是否启用 debug 模式
+    debug_mode = os.getenv('FLASK_DEBUG', 'False').lower() in ['true', '1', 'yes']
+    logger.info(f"Starting Flask app with debug mode: {debug_mode}")
+    app.run(host="0.0.0.0", port=5000, debug=debug_mode)
