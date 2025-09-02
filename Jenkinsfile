@@ -149,7 +149,7 @@ EOF
                             TEST_PORT=$(shuf -i 8080-8999 -n 1)
                             echo "使用测试端口: $TEST_PORT"
                             
-                            // 使用 --env-file 将工作区的 .env 文件注入到容器中
+                            # 使用 --env-file 将工作区的 .env 文件注入到容器中
                             CONTAINER_ID=$(docker run --rm -d --name test-medical-${BUILD_NUMBER} --env-file .env -p $TEST_PORT:5000 ''' + imageToTest + ''')                            
                             echo "等待120秒让应用完全启动..."
                             sleep 120 
