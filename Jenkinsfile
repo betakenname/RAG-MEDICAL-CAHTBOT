@@ -74,9 +74,11 @@ pipeline {
             steps {
                 script {
                     // 从Jenkins凭据中读取Secret text，并创建.env文件
-                    withCredentials([string(credentialsId: 'dotenv-file', variable: 'DOTENV_CONTENT')]) {
-                        echo "从Jenkins凭据创建 .env 文件..."
-                        sh 'echo "${DOTENV_CONTENT}" > .env'
+                    withCredentials([file(credentialsId: 'dotenv-secret-file', variable: 'DOTENV_FILE_PATH')]) {
+                    echo "从 Secret file 凭据复制内容到 .env 文件..."
+                    // Jenkins 会将凭据文件放在一个临时路径下，我们通过变量 DOTENV_FILE_PATH 拿到这个路径
+                    // 然后将这个临时文件复制到我们工作区的 .env 文件，供后续步骤使用
+                    sh 'cp "${DOTENV_FILE_PATH}" .env'
                     }
 
                     // 使用AWS凭证进行登录和推送
